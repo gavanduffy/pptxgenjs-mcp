@@ -1,14 +1,31 @@
 {
   "name": "pptxgenjs-mcp",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "description": "MCP server for creating PowerPoint presentations using PptxGenJS",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "pptxgenjs-mcp": "./dist/index.js"
   },
-  "keywords": [],
+  "scripts": {
+    "build": "tsc",
+    "prepare": "npm run build",
+    "watch": "tsc --watch",
+    "start": "node dist/index.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "pptxgenjs",
+    "powerpoint",
+    "presentations",
+    "pptx"
+  ],
   "author": "",
   "license": "ISC",
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.21.1",
     "pptxgenjs": "^4.0.1",
