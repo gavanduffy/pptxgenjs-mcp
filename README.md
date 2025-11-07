@@ -1,1 +1,316 @@
-# pptxgenjs-mcp
+# PptxGenJS MCP Server
+
+A Model Context Protocol (MCP) server that provides comprehensive PowerPoint presentation creation capabilities using [PptxGenJS](https://gitbrent.github.io/PptxGenJS/). This server exposes the entire feature set of PptxGenJS through an LLM-friendly interface.
+
+## Features
+
+This MCP server provides tools for:
+
+- **Presentation Management**: Create presentations with custom layouts, metadata, and properties
+- **Slide Operations**: Add slides with backgrounds, sections, and custom layouts
+- **Text Content**: Add formatted text with rich styling options (fonts, colors, alignment, bullets, etc.)
+- **Shapes**: Insert various shapes including rectangles, circles, arrows, flowchart elements, and more
+- **Images**: Add images from URLs, local paths, or base64 data
+- **Tables**: Create formatted tables with custom styling, borders, and cell properties
+- **Charts**: Generate various chart types (bar, line, pie, area, scatter, bubble, radar, doughnut)
+- **Speaker Notes**: Add presenter notes to slides
+- **Export**: Save presentations to files or export as base64/binary data
+
+## Installation
+
+```bash
+npm install
+npm run build
+```
+
+## Usage
+
+### With Claude Desktop
+
+Add this to your Claude Desktop configuration file:
+
+**MacOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "pptxgenjs": {
+      "command": "node",
+      "args": ["/path/to/pptxgenjs-mcp/dist/index.js"]
+    }
+  }
+}
+```
+
+### With MCP Client
+
+```javascript
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+
+const transport = new StdioClientTransport({
+  command: "node",
+  args: ["/path/to/pptxgenjs-mcp/dist/index.js"]
+});
+
+const client = new Client({
+  name: "example-client",
+  version: "1.0.0"
+}, {
+  capabilities: {}
+});
+
+await client.connect(transport);
+```
+
+## Available Tools
+
+### Presentation Management
+
+#### `create_presentation`
+Create a new PowerPoint presentation.
+
+**Parameters:**
+- `presentationId` (optional): Custom ID for the presentation
+- `layout` (optional): Layout type ('LAYOUT_4x3', 'LAYOUT_16x9', 'LAYOUT_16x10', 'LAYOUT_WIDE')
+- `author` (optional): Author name
+- `company` (optional): Company name
+- `title` (optional): Presentation title
+- `subject` (optional): Presentation subject
+- `rtlMode` (optional): Enable right-to-left mode
+
+**Returns:** Presentation ID for use in subsequent operations
+
+#### `list_presentations`
+List all active presentations in memory.
+
+#### `define_layout`
+Create a custom slide layout with specific dimensions.
+
+**Parameters:**
+- `presentationId`: Presentation ID
+- `name`: Layout name (e.g., 'A4')
+- `width`: Width in inches
+- `height`: Height in inches
+
+### Slide Operations
+
+#### `add_slide`
+Add a new slide to the presentation.
+
+**Parameters:**
+- `presentationId`: Presentation ID
+- `backgroundColor` (optional): 6-digit hex color (e.g., 'FF0000')
+- `backgroundImage` (optional): Image path or base64 data
+
+#### `add_section`
+Add a named section to organize slides.
+
+**Parameters:**
+- `presentationId`: Presentation ID
+- `title`: Section title
+
+### Content Tools
+
+#### `add_text`
+Add text to the current slide with rich formatting.
+
+**Parameters:**
+- `presentationId`: Presentation ID
+- `text`: Text content (string or array of text objects)
+- `x`, `y`, `w`, `h`: Position and size (inches or percentage)
+- `fontSize`: Font size in points
+- `fontFace`: Font family name
+- `color`: Text color (6-digit hex)
+- `bold`, `italic`, `underline`: Text styling
+- `align`: Horizontal alignment ('left', 'center', 'right', 'justify')
+- `valign`: Vertical alignment ('top', 'middle', 'bottom')
+- `bullet`: Enable bullet points
+- `lineSpacing`: Line spacing multiplier
+
+#### `add_shape`
+Add a shape to the current slide.
+
+**Parameters:**
+- `presentationId`: Presentation ID
+- `shape`: Shape type (e.g., 'rect', 'ellipse', 'roundRect', 'triangle', 'rightArrow', 'star')
+- `x`, `y`, `w`, `h`: Position and size
+- `fill`: Fill configuration (color, transparency)
+- `line`: Border configuration (color, width, dashType)
+
+**Supported shapes include:**
+- Basic: rectangle, ellipse, triangle, diamond, star, heart, cloud
+- Arrows: rightArrow, leftArrow, upArrow, downArrow, bentArrow
+- Flowchart: flowChartProcess, flowChartDecision, flowChartDocument, etc.
+- And many more...
+
+#### `add_image`
+Add an image to the current slide.
+
+**Parameters:**
+- `presentationId`: Presentation ID
+- `path` or `data`: Image source (URL, local path, or base64)
+- `x`, `y`, `w`, `h`: Position and size
+- `sizing`: Sizing options (contain, cover, crop)
+- `hyperlink`: Add clickable link
+- `rounding`: Round corners
+- `transparency`: Image transparency (0-100)
+
+#### `add_table`
+Add a table with customizable styling.
+
+**Parameters:**
+- `presentationId`: Presentation ID
+- `rows`: Array of rows (each row is array of cells)
+- `x`, `y`, `w`, `h`: Position and size
+- `colW`: Column widths array
+- `rowH`: Row heights array
+- `fontSize`, `fontFace`, `color`: Default text styling
+- `fill`: Default cell background color
+- `border`: Default cell borders
+
+Each cell can be:
+- A simple string
+- An object with `text` and `options` for individual cell styling
+
+#### `add_chart`
+Add a chart to the current slide.
+
+**Parameters:**
+- `presentationId`: Presentation ID
+- `type`: Chart type ('bar', 'bar3D', 'line', 'pie', 'area', 'scatter', 'bubble', 'radar', 'doughnut')
+- `data`: Array of data series (each with name, labels, values)
+- `x`, `y`, `w`, `h`: Position and size
+- `title`: Chart title
+- `showLabel`, `showLegend`, `showTitle`, `showValue`: Display options
+- `legendPos`: Legend position ('b', 't', 'l', 'r', 'tr')
+- `barDir`: Bar direction ('bar', 'col')
+- `barGrouping`: Grouping style ('clustered', 'stacked', 'percentStacked')
+- `catAxisTitle`, `valAxisTitle`: Axis titles
+
+#### `add_notes`
+Add speaker notes to the current slide.
+
+**Parameters:**
+- `presentationId`: Presentation ID
+- `notes`: Notes text
+
+### Export Tools
+
+#### `save_presentation`
+Save the presentation to a file.
+
+**Parameters:**
+- `presentationId`: Presentation ID
+- `fileName`: Output filename (should end with .pptx)
+- `compression` (optional): Enable compression to reduce file size
+
+#### `export_presentation`
+Export presentation as base64 or other format.
+
+**Parameters:**
+- `presentationId`: Presentation ID
+- `outputType`: Format type ('base64', 'arraybuffer', 'blob', 'nodebuffer', 'uint8array')
+
+## Example Usage
+
+Here's an example workflow for creating a presentation:
+
+```javascript
+// 1. Create a presentation
+const createResult = await callTool("create_presentation", {
+  layout: "LAYOUT_16x9",
+  title: "My Presentation",
+  author: "John Doe"
+});
+const presentationId = createResult.presentationId;
+
+// 2. Add a title slide
+await callTool("add_slide", { presentationId });
+await callTool("add_text", {
+  presentationId,
+  text: "Welcome to My Presentation",
+  x: 1,
+  y: 2,
+  w: 8,
+  h: 1.5,
+  fontSize: 44,
+  bold: true,
+  align: "center"
+});
+
+// 3. Add a content slide with bullet points
+await callTool("add_slide", { 
+  presentationId,
+  backgroundColor: "F0F0F0"
+});
+await callTool("add_text", {
+  presentationId,
+  text: "Key Points",
+  x: 0.5,
+  y: 0.5,
+  w: 9,
+  h: 0.75,
+  fontSize: 32,
+  bold: true
+});
+await callTool("add_text", {
+  presentationId,
+  text: "First point\nSecond point\nThird point",
+  x: 0.5,
+  y: 1.5,
+  w: 9,
+  h: 3,
+  fontSize: 20,
+  bullet: true
+});
+
+// 4. Add a chart slide
+await callTool("add_slide", { presentationId });
+await callTool("add_chart", {
+  presentationId,
+  type: "bar",
+  data: [
+    {
+      name: "Sales",
+      labels: ["Q1", "Q2", "Q3", "Q4"],
+      values: [15, 28, 35, 42]
+    }
+  ],
+  x: 1,
+  y: 1.5,
+  w: 8,
+  h: 4,
+  title: "Quarterly Sales",
+  showLegend: true
+});
+
+// 5. Save the presentation
+await callTool("save_presentation", {
+  presentationId,
+  fileName: "output.pptx",
+  compression: true
+});
+```
+
+## Development
+
+```bash
+# Build the project
+npm run build
+
+# Watch mode for development
+npm run watch
+
+# Start the server
+npm start
+```
+
+## License
+
+ISC
+
+## Credits
+
+This MCP server uses [PptxGenJS](https://gitbrent.github.io/PptxGenJS/) for PowerPoint generation capabilities.
