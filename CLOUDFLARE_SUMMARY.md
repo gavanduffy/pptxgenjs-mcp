@@ -196,7 +196,7 @@ Reusable tool schemas for all MCP tools, making it easy to:
    ```bash
    npm install -g wrangler
    wrangler login
-   wrangler r2 bucket create pptx-files
+   wrangler r2 bucket create pptx
    npm run deploy
    ```
 

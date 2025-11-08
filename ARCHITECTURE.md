@@ -137,7 +137,7 @@ In-Memory (Maps)
 ### Cloud Mode Storage
 
 ```
-R2 Bucket (pptx-files)
+R2 Bucket (pptx)
 ├── abc123.pptx
 ├── xyz789.pptx
 └── ...
