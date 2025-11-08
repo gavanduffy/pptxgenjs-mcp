@@ -143,10 +143,16 @@ function createPresentationFromTemplate(templateData: any, contentMapping: any =
               if (replacement?.text !== undefined) {
                 textContent = replacement.text;
               } else if (textContent) {
-                // Basic HTML to text conversion
+                // Convert HTML to plain text for PowerPoint presentation
+                // Note: This is NOT for HTML sanitization - the output goes to PowerPoint via PptxGenJS,
+                // not to a web browser. We're extracting text content from HTML markup in the template.
                 textContent = textContent
-                  .replace(/<[^>]*>/g, '')
-                  .replace(/&nbsp;/g, ' ')
+                  .replace(/<[^>]+>/g, '') // Strip all HTML tags
+                  .replace(/&nbsp;/g, ' ') // Convert HTML non-breaking space to regular space
+                  .replace(/&lt;/g, '<')
+                  .replace(/&gt;/g, '>')
+                  .replace(/&amp;/g, '&')
+                  .replace(/&quot;/g, '"')
                   .trim();
               }
               
