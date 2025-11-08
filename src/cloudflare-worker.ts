@@ -13,10 +13,10 @@ import {
   McpError,
   ErrorCode,
 } from "@modelcontextprotocol/sdk/types.js";
-import { createRequire } from "module";
+import * as PptxGenJSModule from "pptxgenjs";
 
-const require = createRequire(import.meta.url);
-const PptxGenJS = require("pptxgenjs");
+// PptxGenJS is exported as default but TypeScript needs help with the type
+const PptxGenJS = (PptxGenJSModule as any).default || PptxGenJSModule;
 
 // Cloudflare Workers environment bindings
 interface Env {
