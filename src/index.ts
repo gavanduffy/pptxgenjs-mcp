@@ -120,7 +120,21 @@ function parseHTMLTable(html: string): any[][] {
       let cellContent = cellMatch[3];
       
       // Remove HTML tags from content but preserve text
-      cellContent = cellContent.replace(/<[^>]+>/g, '').trim();
+      // Using multiple passes to handle nested or malformed tags
+      let previousContent = '';
+      while (cellContent !== previousContent) {
+        previousContent = cellContent;
+        cellContent = cellContent.replace(/<[^>]*>/g, '');
+      }
+      // Decode common HTML entities (amp must be last to avoid double-decoding)
+      cellContent = cellContent
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')  // Must be last to avoid double-decoding
+        .trim();
       
       // Parse attributes for styling
       const options: any = {};
