@@ -1,0 +1,5 @@
+---
+name: pptxgenjs-mcp-agent
+description: Custom agent for pptxgenjs-mcp repository with access to all standard tools and custom MCP server for PowerPoint generation capabilities
+tools: ["*", "pptxgenjs-mcp/*"]
+---
