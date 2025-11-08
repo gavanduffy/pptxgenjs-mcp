@@ -80,6 +80,9 @@ async function searchImages(query: string, maxResults: number = SEARXNG_CONFIG.d
   }
 }
 
+// Store slide masters
+const slideMasters = new Map<string, any>();
+
 // Helper to get or create presentation
 function getPresentation(presentationId?: string): { pptx: any; id: string } {
   if (presentationId && presentations.has(presentationId)) {
@@ -91,6 +94,113 @@ function getPresentation(presentationId?: string): { pptx: any; id: string } {
   const pptx = new PptxGenJS();
   presentations.set(id, pptx);
   return { pptx, id };
+}
+
+// Helper function to parse HTML table
+function parseHTMLTable(html: string): any[][] {
+  // Simple HTML table parser - extracts text content and basic styling
+  const rows: any[][] = [];
+  
+  // Remove extra whitespace and newlines
+  html = html.replace(/\s+/g, ' ').trim();
+  
+  // Extract all rows (including thead and tbody)
+  const rowMatches = html.matchAll(/<tr[^>]*>(.*?)<\/tr>/gi);
+  
+  for (const rowMatch of rowMatches) {
+    const rowContent = rowMatch[1];
+    const cells: any[] = [];
+    
+    // Match both th and td cells
+    const cellMatches = rowContent.matchAll(/<(th|td)([^>]*)>(.*?)<\/\1>/gi);
+    
+    for (const cellMatch of cellMatches) {
+      const cellTag = cellMatch[1];
+      const cellAttrs = cellMatch[2];
+      let cellContent = cellMatch[3];
+      
+      // Remove HTML tags from content but preserve text
+      // Using multiple passes to handle nested or malformed tags
+      let previousContent = '';
+      while (cellContent !== previousContent) {
+        previousContent = cellContent;
+        cellContent = cellContent.replace(/<[^>]*>/g, '');
+      }
+      // Decode common HTML entities (amp must be last to avoid double-decoding)
+      cellContent = cellContent
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')  // Must be last to avoid double-decoding
+        .trim();
+      
+      // Parse attributes for styling
+      const options: any = {};
+      
+      // Check for bold (th tags are bold by default)
+      if (cellTag.toLowerCase() === 'th') {
+        options.bold = true;
+      }
+      
+      // Check for bold in content tags
+      if (cellMatch[3].includes('<b>') || cellMatch[3].includes('<strong>')) {
+        options.bold = true;
+      }
+      
+      // Check for italic
+      if (cellMatch[3].includes('<i>') || cellMatch[3].includes('<em>')) {
+        options.italic = true;
+      }
+      
+      // Parse colspan
+      const colspanMatch = cellAttrs.match(/colspan=["']?(\d+)["']?/i);
+      if (colspanMatch) {
+        options.colspan = parseInt(colspanMatch[1]);
+      }
+      
+      // Parse rowspan
+      const rowspanMatch = cellAttrs.match(/rowspan=["']?(\d+)["']?/i);
+      if (rowspanMatch) {
+        options.rowspan = parseInt(rowspanMatch[1]);
+      }
+      
+      // Parse text alignment
+      const alignMatch = cellAttrs.match(/align=["']?(left|center|right)["']?/i);
+      if (alignMatch) {
+        options.align = alignMatch[1].toLowerCase();
+      }
+      
+      // Parse background color from style or bgcolor attribute
+      const bgcolorMatch = cellAttrs.match(/bgcolor=["']?#?([0-9a-f]{6})["']?/i);
+      const styleMatch = cellAttrs.match(/background-color:\s*#?([0-9a-f]{6})/i);
+      if (bgcolorMatch) {
+        options.fill = bgcolorMatch[1].toUpperCase();
+      } else if (styleMatch) {
+        options.fill = styleMatch[1].toUpperCase();
+      }
+      
+      // Parse text color
+      const colorMatch = cellAttrs.match(/color:\s*#?([0-9a-f]{6})/i);
+      if (colorMatch) {
+        options.color = colorMatch[1].toUpperCase();
+      }
+      
+      // If we have styling options, create an object; otherwise just use the text
+      if (Object.keys(options).length > 0) {
+        cells.push({ text: cellContent, options });
+      } else {
+        cells.push(cellContent);
+      }
+    }
+    
+    if (cells.length > 0) {
+      rows.push(cells);
+    }
+  }
+  
+  return rows;
 }
 
 // Validation schemas
@@ -795,6 +905,199 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ["query"],
         },
       },
+      {
+        name: "import_html_table",
+        description: "Import an HTML table and convert it to a PowerPoint table. Preserves basic styling including bold, italic, colors, alignment, colspan, and rowspan.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            presentationId: {
+              type: "string",
+              description: "Presentation ID",
+            },
+            html: {
+              type: "string",
+              description: "HTML table markup (should include <table> tag)",
+            },
+            x: {
+              type: ["number", "string"],
+              description: "X position in inches or percentage",
+            },
+            y: {
+              type: ["number", "string"],
+              description: "Y position in inches or percentage",
+            },
+            w: {
+              type: ["number", "string"],
+              description: "Table width in inches or percentage",
+            },
+            h: {
+              type: ["number", "string"],
+              description: "Table height in inches or percentage",
+            },
+            fontSize: {
+              type: "number",
+              description: "Default font size for cells (can be overridden by inline styles)",
+            },
+            border: {
+              type: "array",
+              description: "Default border for all cells",
+              items: {
+                type: "object",
+                properties: {
+                  type: { type: "string", enum: ["solid", "dash", "none"] },
+                  color: { type: "string" },
+                  pt: { type: "number" },
+                },
+              },
+            },
+          },
+          required: ["presentationId", "html"],
+        },
+      },
+      {
+        name: "add_slide_with_content",
+        description: "Add a new slide with content (text, shapes, images, tables, or charts) in a single operation. This is more efficient than calling add_slide followed by multiple content operations.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            presentationId: {
+              type: "string",
+              description: "Presentation ID",
+            },
+            backgroundColor: {
+              type: "string",
+              description: "Slide background color as 6-digit hex",
+            },
+            backgroundImage: {
+              type: "object",
+              description: "Background image configuration",
+              properties: {
+                path: { type: "string" },
+                data: { type: "string" },
+              },
+            },
+            content: {
+              type: "array",
+              description: "Array of content items to add to the slide",
+              items: {
+                type: "object",
+                properties: {
+                  type: {
+                    type: "string",
+                    enum: ["text", "shape", "image", "table", "chart"],
+                    description: "Type of content to add",
+                  },
+                  data: {
+                    type: "object",
+                    description: "Content-specific data (same as individual tool parameters)",
+                  },
+                },
+                required: ["type", "data"],
+              },
+            },
+          },
+          required: ["presentationId"],
+        },
+      },
+      {
+        name: "define_slide_master",
+        description: "Define a reusable slide master template with predefined layouts and styling. Once defined, it can be applied to new slides for consistent presentation design.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            masterId: {
+              type: "string",
+              description: "Unique identifier for this slide master",
+            },
+            name: {
+              type: "string",
+              description: "Human-readable name for the master (e.g., 'Title Slide', 'Content Slide', 'Two Column')",
+            },
+            backgroundColor: {
+              type: "string",
+              description: "Default background color as 6-digit hex",
+            },
+            backgroundImage: {
+              type: "object",
+              description: "Default background image",
+              properties: {
+                path: { type: "string" },
+                data: { type: "string" },
+              },
+            },
+            placeholders: {
+              type: "array",
+              description: "Predefined placeholders for content",
+              items: {
+                type: "object",
+                properties: {
+                  id: {
+                    type: "string",
+                    description: "Placeholder identifier (e.g., 'title', 'content', 'subtitle')",
+                  },
+                  type: {
+                    type: "string",
+                    enum: ["text", "image", "shape"],
+                    description: "Type of placeholder",
+                  },
+                  x: { type: ["number", "string"] },
+                  y: { type: ["number", "string"] },
+                  w: { type: ["number", "string"] },
+                  h: { type: ["number", "string"] },
+                  fontSize: { type: "number" },
+                  fontFace: { type: "string" },
+                  color: { type: "string" },
+                  bold: { type: "boolean" },
+                  italic: { type: "boolean" },
+                  align: { type: "string", enum: ["left", "center", "right", "justify"] },
+                  valign: { type: "string", enum: ["top", "middle", "bottom"] },
+                },
+                required: ["id", "type", "x", "y", "w", "h"],
+              },
+            },
+          },
+          required: ["masterId", "name"],
+        },
+      },
+      {
+        name: "add_slide_from_master",
+        description: "Add a new slide based on a predefined slide master template. Content can be provided to fill the placeholders defined in the master.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            presentationId: {
+              type: "string",
+              description: "Presentation ID",
+            },
+            masterId: {
+              type: "string",
+              description: "Slide master ID to apply",
+            },
+            placeholderContent: {
+              type: "object",
+              description: "Content to fill placeholders (keys are placeholder IDs from the master)",
+              additionalProperties: {
+                type: "object",
+                properties: {
+                  text: { type: "string" },
+                  path: { type: "string" },
+                  data: { type: "string" },
+                },
+              },
+            },
+          },
+          required: ["presentationId", "masterId"],
+        },
+      },
+      {
+        name: "list_slide_masters",
+        description: "List all defined slide masters.",
+        inputSchema: {
+          type: "object",
+          properties: {},
+        },
+      },
     ],
   };
 });
@@ -1298,6 +1601,255 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 success: true,
                 results,
                 message: `Found ${results.length} images for query: "${query}"`,
+              }, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "import_html_table": {
+        const { presentationId, html, ...options } = args as any;
+        if (!presentationId || !html) {
+          throw new McpError(ErrorCode.InvalidParams, "presentationId and html are required");
+        }
+        
+        const { pptx } = getPresentation(presentationId);
+        const slides = (pptx as any).slides;
+        if (!slides || slides.length === 0) {
+          throw new McpError(ErrorCode.InvalidParams, "No slides in presentation. Add a slide first.");
+        }
+        
+        try {
+          const rows = parseHTMLTable(html);
+          
+          if (rows.length === 0) {
+            throw new Error("No valid table data found in HTML");
+          }
+          
+          const currentSlide = slides[slides.length - 1];
+          currentSlide.addTable(rows, options);
+          
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  success: true,
+                  message: `HTML table imported with ${rows.length} rows`,
+                  presentationId,
+                  rowCount: rows.length,
+                  columnCount: rows[0]?.length || 0,
+                }, null, 2),
+              },
+            ],
+          };
+        } catch (error: any) {
+          throw new McpError(ErrorCode.InvalidParams, `Failed to parse HTML table: ${error.message}`);
+        }
+      }
+
+      case "add_slide_with_content": {
+        const { presentationId, backgroundColor, backgroundImage, content } = args as any;
+        if (!presentationId) {
+          throw new McpError(ErrorCode.InvalidParams, "presentationId is required");
+        }
+        
+        const { pptx } = getPresentation(presentationId);
+        
+        // Add the slide
+        const slideOptions: any = {};
+        if (backgroundColor || backgroundImage) {
+          const bg: any = {};
+          if (backgroundColor) bg.color = backgroundColor;
+          if (backgroundImage?.path) bg.path = backgroundImage.path;
+          if (backgroundImage?.data) bg.data = backgroundImage.data;
+          slideOptions.background = bg;
+        }
+        
+        const slide = pptx.addSlide(slideOptions);
+        
+        // Add content items if provided
+        let contentCount = 0;
+        if (content && Array.isArray(content)) {
+          for (const item of content) {
+            const { type, data } = item;
+            
+            switch (type) {
+              case "text":
+                slide.addText(data.text, data);
+                contentCount++;
+                break;
+              case "shape":
+                const { shape, ...shapeOpts } = data;
+                slide.addShape(shape, shapeOpts);
+                contentCount++;
+                break;
+              case "image":
+                slide.addImage(data);
+                contentCount++;
+                break;
+              case "table":
+                const { rows, ...tableOpts } = data;
+                slide.addTable(rows, tableOpts);
+                contentCount++;
+                break;
+              case "chart":
+                const { chartType, chartData, ...chartOpts } = data;
+                slide.addChart(chartType, chartData, chartOpts);
+                contentCount++;
+                break;
+            }
+          }
+        }
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: true,
+                message: `Slide added with ${contentCount} content items`,
+                presentationId,
+                contentCount,
+              }, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "define_slide_master": {
+        const { masterId, name, backgroundColor, backgroundImage, placeholders } = args as any;
+        if (!masterId || !name) {
+          throw new McpError(ErrorCode.InvalidParams, "masterId and name are required");
+        }
+        
+        // Store the slide master definition
+        const master = {
+          id: masterId,
+          name,
+          backgroundColor,
+          backgroundImage,
+          placeholders: placeholders || [],
+        };
+        
+        slideMasters.set(masterId, master);
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: true,
+                message: `Slide master '${name}' defined with ID '${masterId}'`,
+                masterId,
+                placeholderCount: master.placeholders.length,
+              }, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "add_slide_from_master": {
+        const { presentationId, masterId, placeholderContent } = args as any;
+        if (!presentationId || !masterId) {
+          throw new McpError(ErrorCode.InvalidParams, "presentationId and masterId are required");
+        }
+        
+        if (!slideMasters.has(masterId)) {
+          throw new McpError(ErrorCode.InvalidParams, `Slide master '${masterId}' not found. Use define_slide_master first.`);
+        }
+        
+        const { pptx } = getPresentation(presentationId);
+        const master = slideMasters.get(masterId)!;
+        
+        // Add slide with master's background
+        const slideOptions: any = {};
+        if (master.backgroundColor || master.backgroundImage) {
+          const bg: any = {};
+          if (master.backgroundColor) bg.color = master.backgroundColor;
+          if (master.backgroundImage?.path) bg.path = master.backgroundImage.path;
+          if (master.backgroundImage?.data) bg.data = master.backgroundImage.data;
+          slideOptions.background = bg;
+        }
+        
+        const slide = pptx.addSlide(slideOptions);
+        
+        // Add content from placeholders
+        let filledCount = 0;
+        for (const placeholder of master.placeholders) {
+          const content = placeholderContent?.[placeholder.id];
+          
+          if (placeholder.type === "text") {
+            const textOptions: any = {
+              x: placeholder.x,
+              y: placeholder.y,
+              w: placeholder.w,
+              h: placeholder.h,
+            };
+            
+            // Copy styling from placeholder
+            if (placeholder.fontSize) textOptions.fontSize = placeholder.fontSize;
+            if (placeholder.fontFace) textOptions.fontFace = placeholder.fontFace;
+            if (placeholder.color) textOptions.color = placeholder.color;
+            if (placeholder.bold !== undefined) textOptions.bold = placeholder.bold;
+            if (placeholder.italic !== undefined) textOptions.italic = placeholder.italic;
+            if (placeholder.align) textOptions.align = placeholder.align;
+            if (placeholder.valign) textOptions.valign = placeholder.valign;
+            
+            // Use provided content or default placeholder text
+            const text = content?.text || `[${placeholder.id}]`;
+            slide.addText(text, textOptions);
+            if (content?.text) filledCount++;
+          } else if (placeholder.type === "image" && content) {
+            const imageOptions: any = {
+              x: placeholder.x,
+              y: placeholder.y,
+              w: placeholder.w,
+              h: placeholder.h,
+            };
+            
+            if (content.path) imageOptions.path = content.path;
+            if (content.data) imageOptions.data = content.data;
+            
+            slide.addImage(imageOptions);
+            filledCount++;
+          }
+        }
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: true,
+                message: `Slide created from master '${master.name}' with ${filledCount} placeholders filled`,
+                presentationId,
+                masterId,
+                masterName: master.name,
+                filledPlaceholders: filledCount,
+                totalPlaceholders: master.placeholders.length,
+              }, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "list_slide_masters": {
+        const masters = Array.from(slideMasters.entries()).map(([id, master]) => ({
+          id,
+          name: master.name,
+          placeholderCount: master.placeholders.length,
+          hasBackground: !!(master.backgroundColor || master.backgroundImage),
+        }));
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: true,
+                masters,
+                count: masters.length,
               }, null, 2),
             },
           ],
