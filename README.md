@@ -18,6 +18,7 @@ This MCP server provides tools for:
 - **Speaker Notes**: Add presenter notes to slides
 - **Batch Operations**: Add slides with multiple content items in a single operation for efficiency
 - **Slide Master Templates**: Define and reuse slide templates for consistent presentation design
+- **PPTX Templates**: Convert existing PPTX files to JSON templates and create new presentations from them with dynamic content replacement
 - **Export**: Save presentations to files or export as base64/binary data
 
 ## Installation
@@ -345,6 +346,135 @@ List all defined slide masters.
 
 **Returns:** Array of slide masters with their IDs, names, and placeholder counts.
 
+### Template Tools
+
+The template system allows you to convert existing PPTX presentations into reusable JSON templates. These templates preserve the layout, styling, and structure of the original presentation while allowing dynamic content replacement when creating new presentations.
+
+#### `convert_pptx_to_template`
+Convert an existing PPTX file to a JSON template format.
+
+**Parameters:**
+- `filePath`: Path to the PPTX file to convert
+
+**Returns:** JSON template data with slide structure and elements
+
+**Example:**
+```javascript
+const result = await callTool("convert_pptx_to_template", {
+  filePath: "/path/to/template.pptx"
+});
+// Returns templateData that can be saved
+```
+
+#### `save_template`
+Save a JSON template with metadata for later use.
+
+**Parameters:**
+- `templateData`: JSON template data (from convert_pptx_to_template or custom)
+- `templateId` (optional): Custom ID for the template (auto-generated if not provided)
+- `name` (optional): Human-readable name for the template
+- `description` (optional): Description of what the template is for
+
+**Returns:** Template ID and metadata
+
+**Example:**
+```javascript
+await callTool("save_template", {
+  templateId: "quarterly-report",
+  templateData: convertedData,
+  name: "Quarterly Report Template",
+  description: "Standard template for quarterly business reports"
+});
+```
+
+#### `list_templates`
+List all saved templates with their metadata.
+
+**Returns:** Array of templates with IDs, names, descriptions, slide counts, and creation dates
+
+**Example:**
+```javascript
+const result = await callTool("list_templates", {});
+// Returns: { templates: [...], count: N }
+```
+
+#### `load_template`
+Load a saved template by its ID to inspect or modify it.
+
+**Parameters:**
+- `templateId`: ID of the template to load
+
+**Returns:** Complete template object with data and metadata
+
+#### `delete_template`
+Delete a saved template by its ID.
+
+**Parameters:**
+- `templateId`: ID of the template to delete
+
+#### `create_from_template`
+Create a new presentation from a saved template with optional content replacement.
+
+**Parameters:**
+- `templateId`: ID of the template to use
+- `contentMapping` (optional): Object mapping element identifiers to replacement content
+
+**Content Mapping Format:**
+The `contentMapping` object allows you to replace content in template elements. Keys can be:
+- Element positions: `"slide_0_element_1"` (slide index, element index)
+- Element names: The name of the element in the original presentation
+
+Values are objects with properties based on element type:
+- **Text/Shape elements**: `{ text: "New text content" }`
+- **Image elements**: `{ path: "url/or/path" }` or `{ data: "base64..." }`
+- **Table elements**: `{ rows: [[...]] }`
+- **Chart elements**: `{ chartType: "bar", data: [...] }`
+
+**Returns:** New presentation ID
+
+**Example:**
+```javascript
+await callTool("create_from_template", {
+  templateId: "quarterly-report",
+  contentMapping: {
+    "slide_0_element_0": { text: "Q1 2025 Report" },
+    "slide_1_element_2": { text: "Revenue: $52.8M" },
+    "Company Logo": { path: "https://example.com/logo.png" },
+  }
+});
+```
+
+**Complete Workflow Example:**
+```javascript
+// 1. Create and save a template presentation
+const pres = await callTool("create_presentation", { layout: "LAYOUT_16x9" });
+// ... add slides and content ...
+await callTool("save_presentation", {
+  presentationId: pres.presentationId,
+  fileName: "template.pptx"
+});
+
+// 2. Convert to template
+const converted = await callTool("convert_pptx_to_template", {
+  filePath: "template.pptx"
+});
+
+// 3. Save as reusable template
+await callTool("save_template", {
+  templateId: "my-template",
+  templateData: converted.templateData,
+  name: "My Template"
+});
+
+// 4. Create presentations from template
+await callTool("create_from_template", {
+  templateId: "my-template",
+  contentMapping: {
+    "slide_0_element_0": { text: "Custom Title" }
+  }
+});
+```
+
 ### Export Tools
 
 #### `save_presentation`
@@ -475,7 +605,18 @@ npm run watch
 
 # Start the server
 npm start
+
+# Test template features
+node test-templates.cjs
 ```
+
+The `test-templates.cjs` script demonstrates the complete template workflow:
+1. Creating a sample presentation
+2. Saving it as a PPTX file
+3. Converting the PPTX to a JSON template
+4. Saving the template for reuse
+5. Creating multiple presentations from the template with different content
+6. Managing and inspecting templates
 
 ## License
 
@@ -483,4 +624,6 @@ ISC
 
 ## Credits
 
-This MCP server uses [PptxGenJS](https://gitbrent.github.io/PptxGenJS/) for PowerPoint generation capabilities.
+This MCP server uses:
+- [PptxGenJS](https://gitbrent.github.io/PptxGenJS/) for PowerPoint generation capabilities
+- [pptxtojson](https://github.com/pipipi-pikachu/pptxtojson) for converting PPTX files to JSON templates

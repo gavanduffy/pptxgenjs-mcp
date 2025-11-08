@@ -13,10 +13,15 @@ import { z } from "zod";
 
 const require = createRequire(import.meta.url);
 const PptxGenJS = require("pptxgenjs");
+const pptxtojson = require("pptxtojson/dist/index.cjs");
 
 // Store active presentations in memory
 const presentations = new Map<string, any>();
 let presentationCounter = 0;
+
+// Store templates in memory
+const templates = new Map<string, any>();
+let templateCounter = 0;
 
 // SearXNG configuration
 const SEARXNG_CONFIG = {
@@ -82,6 +87,163 @@ async function searchImages(query: string, maxResults: number = SEARXNG_CONFIG.d
 
 // Store slide masters
 const slideMasters = new Map<string, any>();
+
+// Helper function to convert PPTX buffer to JSON template
+async function convertPptxToJson(buffer: Buffer): Promise<any> {
+  try {
+    const json = await pptxtojson.parse(buffer.buffer);
+    return json;
+  } catch (error: any) {
+    throw new Error(`Failed to convert PPTX to JSON: ${error.message}`);
+  }
+}
+
+// Helper function to create presentation from template
+function createPresentationFromTemplate(templateData: any, contentMapping: any = {}): string {
+  const pptx = new PptxGenJS();
+  const presentationId = `pres_${++presentationCounter}`;
+  
+  // Apply presentation-level properties if available
+  if (templateData.title) pptx.title = templateData.title;
+  if (templateData.subject) pptx.subject = templateData.subject;
+  if (templateData.author) pptx.author = templateData.author;
+  
+  // Process each slide from the template
+  if (templateData.slides && Array.isArray(templateData.slides)) {
+    templateData.slides.forEach((templateSlide: any, slideIndex: number) => {
+      const slide = pptx.addSlide();
+      
+      // Apply slide background
+      if (templateSlide.fill) {
+        if (templateSlide.fill.type === "color" && templateSlide.fill.value) {
+          // Remove # if present and set background
+          const color = templateSlide.fill.value.replace('#', '');
+          slide.background = { color };
+        }
+      }
+      
+      // Process elements on the slide
+      if (templateSlide.elements && Array.isArray(templateSlide.elements)) {
+        templateSlide.elements.forEach((element: any, elementIndex: number) => {
+          const elementKey = `slide_${slideIndex}_element_${elementIndex}`;
+          const replacement = contentMapping[elementKey] || contentMapping[element.name];
+          
+          try {
+            if (element.type === "text" || element.type === "shape") {
+              // Handle text/shape elements
+              const textOptions: any = {
+                x: (element.left || 0) / 72, // Convert pt to inches
+                y: (element.top || 0) / 72,
+                w: (element.width || 100) / 72,
+                h: (element.height || 100) / 72,
+              };
+              
+              // Parse HTML content to extract text
+              let textContent = element.content || "";
+              if (replacement?.text !== undefined) {
+                textContent = replacement.text;
+              } else if (textContent) {
+                // Convert HTML to plain text for PowerPoint presentation
+                // Note: This is NOT for HTML sanitization - the output goes to PowerPoint via PptxGenJS,
+                // not to a web browser. We're extracting text content from HTML markup in the template.
+                textContent = textContent
+                  .replace(/<[^>]+>/g, '') // Strip all HTML tags
+                  .replace(/&nbsp;/g, ' ') // Convert HTML non-breaking space to regular space
+                  .replace(/&lt;/g, '<')
+                  .replace(/&gt;/g, '>')
+                  .replace(/&amp;/g, '&')
+                  .replace(/&quot;/g, '"')
+                  .trim();
+              }
+              
+              // Apply styling from element
+              if (element.fill?.value) {
+                textOptions.fill = { color: element.fill.value.replace('#', '') };
+              }
+              if (element.rotate) textOptions.rotate = element.rotate;
+              
+              if (element.type === "shape" && element.shapType) {
+                // Add shape with text
+                slide.addShape(element.shapType, {
+                  ...textOptions,
+                  text: textContent,
+                });
+              } else {
+                // Add text box
+                slide.addText(textContent || " ", textOptions);
+              }
+            } else if (element.type === "image") {
+              // Handle image elements
+              const imageOptions: any = {
+                x: (element.left || 0) / 72,
+                y: (element.top || 0) / 72,
+                w: (element.width || 100) / 72,
+                h: (element.height || 100) / 72,
+              };
+              
+              if (replacement?.path) {
+                imageOptions.path = replacement.path;
+                slide.addImage(imageOptions);
+              } else if (replacement?.data) {
+                imageOptions.data = replacement.data;
+                slide.addImage(imageOptions);
+              } else if (element.src) {
+                // Use original image if no replacement
+                imageOptions.data = element.src;
+                slide.addImage(imageOptions);
+              }
+            } else if (element.type === "table") {
+              // Handle table elements
+              const tableOptions: any = {
+                x: (element.left || 0) / 72,
+                y: (element.top || 0) / 72,
+                w: (element.width || 100) / 72,
+                h: (element.height || 100) / 72,
+              };
+              
+              // Convert table data if available
+              if (element.data && Array.isArray(element.data)) {
+                const rows = element.data.map((row: any) => {
+                  if (Array.isArray(row)) {
+                    return row.map((cell: any) => cell.text || cell || "");
+                  }
+                  return [];
+                });
+                
+                if (rows.length > 0) {
+                  slide.addTable(replacement?.rows || rows, tableOptions);
+                }
+              }
+            } else if (element.type === "chart") {
+              // Handle chart elements - basic support
+              const chartOptions: any = {
+                x: (element.left || 0) / 72,
+                y: (element.top || 0) / 72,
+                w: (element.width || 100) / 72,
+                h: (element.height || 100) / 72,
+              };
+              
+              if (replacement?.data && replacement?.chartType) {
+                slide.addChart(replacement.chartType, replacement.data, chartOptions);
+              }
+            }
+          } catch (elementError: any) {
+            // Log error but continue processing other elements
+            console.error(`Error processing element ${elementIndex} on slide ${slideIndex}:`, elementError.message);
+          }
+        });
+      }
+      
+      // Add speaker notes if available
+      if (templateSlide.note) {
+        slide.addNotes(templateSlide.note);
+      }
+    });
+  }
+  
+  presentations.set(presentationId, pptx);
+  return presentationId;
+}
 
 // Helper to get or create presentation
 function getPresentation(presentationId?: string): { pptx: any; id: string } {
@@ -1098,6 +1260,101 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {},
         },
       },
+      // Template Management
+      {
+        name: "convert_pptx_to_template",
+        description: "Convert a PPTX file to a JSON template that can be saved and reused. Accepts a file path to a .pptx file.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            filePath: {
+              type: "string",
+              description: "Path to the PPTX file to convert",
+            },
+          },
+          required: ["filePath"],
+        },
+      },
+      {
+        name: "save_template",
+        description: "Save a JSON template with a unique ID for later use. The template can be from convert_pptx_to_template or a manually created JSON structure.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            templateId: {
+              type: "string",
+              description: "Unique identifier for the template (optional, will be generated if not provided)",
+            },
+            templateData: {
+              type: "object",
+              description: "JSON template data (output from convert_pptx_to_template or custom template structure)",
+            },
+            name: {
+              type: "string",
+              description: "Human-readable name for the template",
+            },
+            description: {
+              type: "string",
+              description: "Description of the template",
+            },
+          },
+          required: ["templateData"],
+        },
+      },
+      {
+        name: "load_template",
+        description: "Load a saved template by its ID.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            templateId: {
+              type: "string",
+              description: "ID of the template to load",
+            },
+          },
+          required: ["templateId"],
+        },
+      },
+      {
+        name: "list_templates",
+        description: "List all saved templates with their IDs and metadata.",
+        inputSchema: {
+          type: "object",
+          properties: {},
+        },
+      },
+      {
+        name: "delete_template",
+        description: "Delete a saved template by its ID.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            templateId: {
+              type: "string",
+              description: "ID of the template to delete",
+            },
+          },
+          required: ["templateId"],
+        },
+      },
+      {
+        name: "create_from_template",
+        description: "Create a new presentation from a saved template with optional content replacement. Provide a content mapping object where keys are element identifiers (e.g., 'slide_0_element_1' or element names) and values are replacement content.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            templateId: {
+              type: "string",
+              description: "ID of the template to use",
+            },
+            contentMapping: {
+              type: "object",
+              description: "Mapping of element identifiers to replacement content. Keys can be 'slide_X_element_Y' format or element names. Values are objects with 'text', 'path', 'data', 'rows', or 'chartType'/'data' properties depending on element type.",
+            },
+          },
+          required: ["templateId"],
+        },
+      },
     ],
   };
 });
@@ -1850,6 +2107,186 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 success: true,
                 masters,
                 count: masters.length,
+              }, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "convert_pptx_to_template": {
+        const { filePath } = args as any;
+        if (!filePath) {
+          throw new McpError(ErrorCode.InvalidParams, "filePath is required");
+        }
+        
+        // Import fs module dynamically
+        const fs = await import('fs');
+        
+        // Check if file exists
+        if (!fs.existsSync(filePath)) {
+          throw new McpError(ErrorCode.InvalidParams, `File not found: ${filePath}`);
+        }
+        
+        // Read the file
+        const buffer = fs.readFileSync(filePath);
+        
+        // Convert to JSON
+        const templateData = await convertPptxToJson(buffer);
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: true,
+                message: "PPTX file converted to JSON template successfully",
+                templateData,
+                slideCount: templateData.slides?.length || 0,
+              }, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "save_template": {
+        const { templateId, templateData, name, description } = args as any;
+        if (!templateData) {
+          throw new McpError(ErrorCode.InvalidParams, "templateData is required");
+        }
+        
+        const id = templateId || `template_${++templateCounter}`;
+        
+        // Check if template ID already exists
+        if (templates.has(id) && templateId) {
+          throw new McpError(ErrorCode.InvalidParams, `Template with ID '${id}' already exists`);
+        }
+        
+        // Store template with metadata
+        const template = {
+          id,
+          name: name || `Template ${id}`,
+          description: description || "",
+          data: templateData,
+          createdAt: new Date().toISOString(),
+          slideCount: templateData.slides?.length || 0,
+        };
+        
+        templates.set(id, template);
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: true,
+                message: `Template saved with ID: ${id}`,
+                templateId: id,
+                name: template.name,
+                slideCount: template.slideCount,
+              }, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "load_template": {
+        const { templateId } = args as any;
+        if (!templateId) {
+          throw new McpError(ErrorCode.InvalidParams, "templateId is required");
+        }
+        
+        if (!templates.has(templateId)) {
+          throw new McpError(ErrorCode.InvalidParams, `Template '${templateId}' not found`);
+        }
+        
+        const template = templates.get(templateId)!;
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: true,
+                template,
+              }, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "list_templates": {
+        const templateList = Array.from(templates.entries()).map(([id, template]) => ({
+          id,
+          name: template.name,
+          description: template.description,
+          slideCount: template.slideCount,
+          createdAt: template.createdAt,
+        }));
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: true,
+                templates: templateList,
+                count: templateList.length,
+              }, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "delete_template": {
+        const { templateId } = args as any;
+        if (!templateId) {
+          throw new McpError(ErrorCode.InvalidParams, "templateId is required");
+        }
+        
+        if (!templates.has(templateId)) {
+          throw new McpError(ErrorCode.InvalidParams, `Template '${templateId}' not found`);
+        }
+        
+        const template = templates.get(templateId)!;
+        templates.delete(templateId);
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: true,
+                message: `Template '${template.name}' (${templateId}) deleted successfully`,
+              }, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "create_from_template": {
+        const { templateId, contentMapping } = args as any;
+        if (!templateId) {
+          throw new McpError(ErrorCode.InvalidParams, "templateId is required");
+        }
+        
+        if (!templates.has(templateId)) {
+          throw new McpError(ErrorCode.InvalidParams, `Template '${templateId}' not found`);
+        }
+        
+        const template = templates.get(templateId)!;
+        const presentationId = createPresentationFromTemplate(template.data, contentMapping || {});
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: true,
+                message: `Presentation created from template '${template.name}'`,
+                presentationId,
+                templateId,
+                templateName: template.name,
+                slideCount: template.slideCount,
               }, null, 2),
             },
           ],

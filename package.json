@@ -29,6 +29,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.21.1",
     "pptxgenjs": "^4.0.1",
+    "pptxtojson": "^1.7.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {
