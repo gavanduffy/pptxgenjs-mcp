@@ -68,7 +68,7 @@ async function uploadToR2(
     return `${publicBucketUrl}/${fileName}`;
   } else if (accountId) {
     // Use R2.dev subdomain (note: this requires public bucket access to be enabled)
-    const bucketName = 'pptx-files'; // This should match wrangler.toml
+    const bucketName = 'pptx'; // This should match wrangler.toml
     return `https://${bucketName}.${accountId}.r2.dev/${fileName}`;
   } else {
     // Fallback - return a relative URL

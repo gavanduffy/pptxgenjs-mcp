@@ -10,8 +10,8 @@ workers_dev = true
 # R2 bucket bindings for PPTX file storage
 [[r2_buckets]]
 binding = "PPTX_BUCKET"
-bucket_name = "pptx-files"
-preview_bucket_name = "pptx-files-preview"
+bucket_name = "pptx"
+preview_bucket_name = "pptx-preview"
 
 # Environment variables
 [env.production]

@@ -38,13 +38,13 @@ This will open a browser window to authenticate with your Cloudflare account.
 Create an R2 bucket for storing PPTX files:
 
 ```bash
-wrangler r2 bucket create pptx-files
+wrangler r2 bucket create pptx
 ```
 
 For staging/preview:
 
 ```bash
-wrangler r2 bucket create pptx-files-preview
+wrangler r2 bucket create pptx-preview
 ```
 
 ### 4. Configure Public Access (Optional but Recommended)
@@ -52,7 +52,7 @@ wrangler r2 bucket create pptx-files-preview
 To allow public downloads of generated presentations:
 
 1. Go to Cloudflare Dashboard → R2
-2. Select your `pptx-files` bucket
+2. Select your `pptx` bucket
 3. Go to Settings → Public Access
 4. Click "Allow Access" and note the public URL (e.g., `https://pub-xxxxx.r2.dev`)
 5. Update `wrangler.toml` with your public bucket URL:
@@ -280,7 +280,7 @@ wrangler deployments list
 
 ```bash
 wrangler r2 bucket list
-wrangler r2 object list pptx-files
+wrangler r2 object list pptx
 ```
 
 ## Troubleshooting
