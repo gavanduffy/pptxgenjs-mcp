@@ -12,6 +12,9 @@ jobs:
     runs-on: ubuntu-latest
     name: Deploy PptxGenJS MCP to Cloudflare Workers
     
+    permissions:
+      contents: read
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
