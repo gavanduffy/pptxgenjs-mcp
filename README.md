@@ -11,6 +11,7 @@ This MCP server provides tools for:
 - **Text Content**: Add formatted text with rich styling options (fonts, colors, alignment, bullets, etc.)
 - **Shapes**: Insert various shapes including rectangles, circles, arrows, flowchart elements, and more
 - **Images**: Add images from URLs, local paths, or base64 data
+- **Image Search**: Search for images via SearXNG and automatically add them to slides
 - **Tables**: Create formatted tables with custom styling, borders, and cell properties
 - **Charts**: Generate various chart types (bar, line, pie, area, scatter, bubble, radar, doughnut)
 - **Speaker Notes**: Add presenter notes to slides
@@ -157,6 +158,44 @@ Add an image to the current slide.
 - `rounding`: Round corners
 - `transparency`: Image transparency (0-100)
 
+#### `search_and_add_image`
+Search for images via SearXNG and optionally add them to a presentation slide.
+
+**Parameters:**
+- `query`: Search query for images (e.g., 'medieval castle architecture', 'Industrial Revolution factory')
+- `maxResults` (optional): Maximum number of results to return (default: 10)
+- `presentationId` (optional): Presentation ID to add image to (required if autoAdd is true)
+- `slideIndex` (optional): Target slide index for image placement (0-based, uses last slide if not provided)
+- `position` (optional): Position and size object with properties:
+  - `x`, `y`: Position in inches or percentage
+  - `w`, `h`: Width and height in inches or percentage
+- `autoAdd` (optional): If true, automatically add the first search result to the specified slide (default: false)
+
+**Returns:**
+- `results`: Array of image search results with `description` and `sourceUrl`
+- `addedToSlide` (when autoAdd is true): Information about the added image including `presentationId`, `slideIndex`, `imageUrl`, and `description`
+
+**Examples:**
+
+Search only:
+```javascript
+await callTool("search_and_add_image", {
+  query: "medieval castle architecture",
+  maxResults: 5
+});
+```
+
+Search and auto-add:
+```javascript
+await callTool("search_and_add_image", {
+  query: "Industrial Revolution factory",
+  presentationId: "pres_123",
+  slideIndex: 2,
+  position: { x: 5, y: 2, w: 4, h: 3 },
+  autoAdd: true
+});
+```
+
 #### `add_table`
 Add a table with customizable styling.
 
@@ -286,7 +325,28 @@ await callTool("add_chart", {
   showLegend: true
 });
 
-// 5. Save the presentation
+// 5. Add a slide with an image from search
+await callTool("add_slide", { presentationId });
+await callTool("add_text", {
+  presentationId,
+  text: "Historical Context",
+  x: 0.5,
+  y: 0.5,
+  w: 9,
+  h: 0.75,
+  fontSize: 32,
+  bold: true
+});
+// Search and add an image automatically
+await callTool("search_and_add_image", {
+  query: "industrial revolution historical photo",
+  presentationId,
+  maxResults: 5,
+  position: { x: 1.5, y: 1.5, w: 7, h: 4 },
+  autoAdd: true
+});
+
+// 6. Save the presentation
 await callTool("save_presentation", {
   presentationId,
   fileName: "output.pptx",

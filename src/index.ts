@@ -18,6 +18,68 @@ const PptxGenJS = require("pptxgenjs");
 const presentations = new Map<string, any>();
 let presentationCounter = 0;
 
+// SearXNG configuration
+const SEARXNG_CONFIG = {
+  baseUrl: "https://searchx.euan.live",
+  imageSearchPath: "/search",
+  defaultMaxResults: 10,
+  timeout: 10000,
+};
+
+// Helper function to search images via SearXNG
+async function searchImages(query: string, maxResults: number = SEARXNG_CONFIG.defaultMaxResults): Promise<Array<{ description: string; sourceUrl: string }>> {
+  const url = new URL(SEARXNG_CONFIG.imageSearchPath, SEARXNG_CONFIG.baseUrl);
+  url.searchParams.set('q', query);
+  url.searchParams.set('format', 'json');
+  url.searchParams.set('categories', 'images');
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), SEARXNG_CONFIG.timeout);
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        'Accept': 'application/json',
+      },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      throw new Error(`SearXNG API returned status ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    // Parse SearXNG response
+    const results: Array<{ description: string; sourceUrl: string }> = [];
+    
+    if (data.results && Array.isArray(data.results)) {
+      for (const item of data.results) {
+        // Extract only title and url fields
+        if (item.url && typeof item.url === 'string') {
+          results.push({
+            description: item.title || '',
+            sourceUrl: item.url,
+          });
+          
+          if (results.length >= maxResults) {
+            break;
+          }
+        }
+      }
+    }
+
+    return results;
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      throw new Error('Image search request timed out. Please try again.');
+    }
+    throw new Error(`Failed to search images: ${error.message}`);
+  }
+}
+
 // Helper to get or create presentation
 function getPresentation(presentationId?: string): { pptx: any; id: string } {
   if (presentationId && presentations.has(presentationId)) {
@@ -679,6 +741,60 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ["presentationId", "title"],
         },
       },
+      {
+        name: "search_and_add_image",
+        description: "Search for images via SearXNG and optionally add them to a presentation slide. Returns image search results with descriptions and URLs. Can automatically add the first result to a slide when autoAdd is true.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            query: {
+              type: "string",
+              description: "Search query for images (e.g., 'medieval castle architecture', 'Industrial Revolution factory')",
+            },
+            maxResults: {
+              type: "number",
+              description: "Maximum number of results to return (default: 10)",
+              default: 10,
+            },
+            presentationId: {
+              type: "string",
+              description: "Optional: Presentation ID to add image to (required if autoAdd is true)",
+            },
+            slideIndex: {
+              type: "number",
+              description: "Optional: Target slide index for image placement (0-based, uses last slide if not provided)",
+            },
+            position: {
+              type: "object",
+              description: "Optional: Position and size of the image on the slide",
+              properties: {
+                x: {
+                  type: ["number", "string"],
+                  description: "X position in inches or percentage",
+                },
+                y: {
+                  type: ["number", "string"],
+                  description: "Y position in inches or percentage",
+                },
+                w: {
+                  type: ["number", "string"],
+                  description: "Width in inches or percentage",
+                },
+                h: {
+                  type: ["number", "string"],
+                  description: "Height in inches or percentage",
+                },
+              },
+            },
+            autoAdd: {
+              type: "boolean",
+              description: "If true, automatically add the first search result to the specified slide",
+              default: false,
+            },
+          },
+          required: ["query"],
+        },
+      },
     ],
   };
 });
@@ -1052,6 +1168,136 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 success: true,
                 message: `Section '${title}' added`,
                 presentationId,
+              }, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "search_and_add_image": {
+        const { query, maxResults = 10, presentationId, slideIndex, position, autoAdd = false } = args as any;
+        
+        if (!query) {
+          throw new McpError(ErrorCode.InvalidParams, "query is required");
+        }
+
+        // Search for images
+        let results;
+        try {
+          results = await searchImages(query, maxResults);
+        } catch (error: any) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  success: false,
+                  error: error.message,
+                  message: "Failed to search for images. Please check your network connection and try again.",
+                }, null, 2),
+              },
+            ],
+          };
+        }
+
+        // If no results found
+        if (results.length === 0) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  success: true,
+                  results: [],
+                  message: `No images found for query: "${query}". Try a different search term.`,
+                }, null, 2),
+              },
+            ],
+          };
+        }
+
+        // If autoAdd is requested
+        if (autoAdd) {
+          if (!presentationId) {
+            throw new McpError(ErrorCode.InvalidParams, "presentationId is required when autoAdd is true");
+          }
+
+          // Check if presentation exists
+          if (!presentations.has(presentationId)) {
+            throw new McpError(ErrorCode.InvalidParams, `Presentation '${presentationId}' not found`);
+          }
+
+          const { pptx } = getPresentation(presentationId);
+          const slides = (pptx as any).slides;
+          
+          if (!slides || slides.length === 0) {
+            throw new McpError(ErrorCode.InvalidParams, "No slides in presentation. Add a slide first.");
+          }
+
+          // Determine which slide to use
+          let targetSlide;
+          if (slideIndex !== undefined) {
+            if (slideIndex < 0 || slideIndex >= slides.length) {
+              throw new McpError(ErrorCode.InvalidParams, `Invalid slideIndex ${slideIndex}. Must be between 0 and ${slides.length - 1}`);
+            }
+            targetSlide = slides[slideIndex];
+          } else {
+            // Use last slide if no index provided
+            targetSlide = slides[slides.length - 1];
+          }
+
+          // Get the first result to add
+          const imageToAdd = results[0];
+          
+          // Build image options
+          const imageOptions: any = {
+            path: imageToAdd.sourceUrl,
+          };
+
+          // Add position if provided
+          if (position) {
+            if (position.x !== undefined) imageOptions.x = position.x;
+            if (position.y !== undefined) imageOptions.y = position.y;
+            if (position.w !== undefined) imageOptions.w = position.w;
+            if (position.h !== undefined) imageOptions.h = position.h;
+          }
+
+          // Add image to slide
+          try {
+            targetSlide.addImage(imageOptions);
+          } catch (error: any) {
+            throw new McpError(ErrorCode.InternalError, `Failed to add image to slide: ${error.message}`);
+          }
+
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  success: true,
+                  results,
+                  addedToSlide: {
+                    presentationId,
+                    slideIndex: slideIndex !== undefined ? slideIndex : slides.length - 1,
+                    imageUrl: imageToAdd.sourceUrl,
+                    description: imageToAdd.description,
+                  },
+                  message: `Image added to slide successfully. Found ${results.length} total results.`,
+                }, null, 2),
+              },
+            ],
+          };
+        }
+
+        // Return search results only
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: true,
+                results,
+                message: `Found ${results.length} images for query: "${query}"`,
               }, null, 2),
             },
           ],
