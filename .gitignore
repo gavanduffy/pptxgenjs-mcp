@@ -40,3 +40,8 @@ temp/
 
 # Generated presentations (for testing)
 *.pptx
+
+# Cloudflare Workers
+.wrangler/
+.dev.vars
+wrangler.toml.local
