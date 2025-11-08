@@ -8,12 +8,11 @@ import {
   McpError,
   ErrorCode,
 } from "@modelcontextprotocol/sdk/types.js";
-import { createRequire } from "module";
 import { z } from "zod";
+import * as PptxGenJSModule from "pptxgenjs";
 
-const require = createRequire(import.meta.url);
-const PptxGenJS = require("pptxgenjs");
-const pptxtojson = require("pptxtojson/dist/index.cjs");
+// PptxGenJS is exported as default but TypeScript needs help with the type
+const PptxGenJS = (PptxGenJSModule as any).default || PptxGenJSModule;
 
 // Store active presentations in memory
 const presentations = new Map<string, any>();
@@ -91,6 +90,9 @@ const slideMasters = new Map<string, any>();
 // Helper function to convert PPTX buffer to JSON template
 async function convertPptxToJson(buffer: Buffer): Promise<any> {
   try {
+    // Dynamic import for pptxtojson (CommonJS module)
+    // @ts-ignore - pptxtojson does not have TypeScript declarations
+    const pptxtojson = await import("pptxtojson/dist/index.cjs");
     const json = await pptxtojson.parse(buffer.buffer);
     return json;
   } catch (error: any) {
