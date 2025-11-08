@@ -23,14 +23,28 @@ This MCP server provides tools for:
 
 ## Installation
 
+### Local Development
+
 ```bash
 npm install
 npm run build
 ```
 
+### Cloudflare Workers Deployment
+
+This MCP server can also be deployed to Cloudflare Workers for cloud-based operation with R2 storage for presentations. See [CLOUDFLARE_DEPLOYMENT.md](./CLOUDFLARE_DEPLOYMENT.md) for detailed setup instructions.
+
+Quick start:
+```bash
+npm install -g wrangler
+wrangler login
+wrangler r2 bucket create pptx-files
+npm run deploy
+```
+
 ## Usage
 
-### With Claude Desktop
+### With Claude Desktop (Local)
 
 Add this to your Claude Desktop configuration file:
 
