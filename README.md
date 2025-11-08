@@ -38,7 +38,7 @@ Quick start:
 ```bash
 npm install -g wrangler
 wrangler login
-wrangler r2 bucket create pptx-files
+wrangler r2 bucket create pptx
 npm run deploy
 ```
 

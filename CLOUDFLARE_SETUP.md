@@ -34,10 +34,10 @@ This will open a browser window. Log in with your Cloudflare account and authori
 
 ```bash
 # Create production bucket
-wrangler r2 bucket create pptx-files
+wrangler r2 bucket create pptx
 
 # Create preview/staging bucket
-wrangler r2 bucket create pptx-files-preview
+wrangler r2 bucket create pptx-preview
 ```
 
 ## Step 4: Build the Worker
@@ -65,7 +65,7 @@ To allow users to download generated presentations:
 ### Option A: Use R2.dev Domain (Simplest)
 
 1. Go to [Cloudflare Dashboard → R2](https://dash.cloudflare.com/?to=/:account/r2)
-2. Click on your `pptx-files` bucket
+2. Click on your `pptx` bucket
 3. Go to **Settings** → **Public Access**
 4. Click **Allow Access**
 5. Copy the public R2.dev URL (e.g., `https://pub-xxxxx.r2.dev`)
@@ -193,7 +193,7 @@ wrangler deployments list
 ### List Files in R2 Bucket
 
 ```bash
-wrangler r2 object list pptx-files
+wrangler r2 object list pptx
 ```
 
 ## Troubleshooting
@@ -207,7 +207,7 @@ wrangler r2 bucket list
 
 If not listed, create it:
 ```bash
-wrangler r2 bucket create pptx-files
+wrangler r2 bucket create pptx
 ```
 
 ### Issue: "Files not accessible"

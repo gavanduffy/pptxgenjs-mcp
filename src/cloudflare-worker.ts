@@ -52,11 +52,15 @@ async function uploadToR2(
   bucket: any, // R2Bucket - runtime type
   fileName: string,
   data: ArrayBuffer,
+  folder: 'output' | 'template',
   accountId?: string,
   publicBucketUrl?: string
 ): Promise<string> {
+  // Construct full path with folder
+  const fullPath = `${folder}/${fileName}`;
+  
   // Upload to R2
-  await bucket.put(fileName, data, {
+  await bucket.put(fullPath, data, {
     httpMetadata: {
       contentType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     },
@@ -65,15 +69,63 @@ async function uploadToR2(
   // Generate public URL
   // If PUBLIC_BUCKET_URL is set, use it; otherwise construct from R2 public domain
   if (publicBucketUrl) {
-    return `${publicBucketUrl}/${fileName}`;
+    return `${publicBucketUrl}/${fullPath}`;
   } else if (accountId) {
     // Use R2.dev subdomain (note: this requires public bucket access to be enabled)
-    const bucketName = 'pptx-files'; // This should match wrangler.toml
-    return `https://${bucketName}.${accountId}.r2.dev/${fileName}`;
+    const bucketName = 'pptx'; // This should match wrangler.toml
+    return `https://${bucketName}.${accountId}.r2.dev/${fullPath}`;
   } else {
     // Fallback - return a relative URL
-    return `/files/${fileName}`;
+    return `/files/${fullPath}`;
   }
+}
+
+// Helper function to save template to R2
+async function saveTemplateToR2(
+  bucket: any,
+  templateId: string,
+  templateData: any,
+  accountId?: string,
+  publicBucketUrl?: string
+): Promise<string> {
+  const fileName = `${templateId}.json`;
+  const fullPath = `template/${fileName}`;
+  const jsonData = JSON.stringify(templateData);
+  const encoder = new TextEncoder();
+  const data = encoder.encode(jsonData);
+  
+  await bucket.put(fullPath, data, {
+    httpMetadata: {
+      contentType: 'application/json',
+    },
+  });
+  
+  // Generate public URL
+  if (publicBucketUrl) {
+    return `${publicBucketUrl}/${fullPath}`;
+  } else if (accountId) {
+    const bucketName = 'pptx';
+    return `https://${bucketName}.${accountId}.r2.dev/${fullPath}`;
+  } else {
+    return `/files/${fullPath}`;
+  }
+}
+
+// Helper function to load template from R2
+async function loadTemplateFromR2(
+  bucket: any,
+  templateId: string
+): Promise<any> {
+  const fileName = `${templateId}.json`;
+  const fullPath = `template/${fileName}`;
+  
+  const object = await bucket.get(fullPath);
+  if (!object) {
+    throw new Error(`Template ${templateId} not found in R2`);
+  }
+  
+  const text = await object.text();
+  return JSON.parse(text);
 }
 
 // Create the MCP server instance
@@ -317,11 +369,12 @@ function createMcpServer(env: Env) {
           // Generate the PPTX file as ArrayBuffer
           const arrayBuffer = await pptx.write({ outputType: 'arraybuffer' });
           
-          // Upload to R2 and get public URL
+          // Upload to R2 in the 'output' folder and get public URL
           const publicUrl = await uploadToR2(
             env.PPTX_BUCKET,
             fileName,
             arrayBuffer,
+            'output',
             env.CLOUDFLARE_ACCOUNT_ID,
             env.PUBLIC_BUCKET_URL
           );
