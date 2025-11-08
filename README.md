@@ -13,8 +13,11 @@ This MCP server provides tools for:
 - **Images**: Add images from URLs, local paths, or base64 data
 - **Image Search**: Search for images via SearXNG and automatically add them to slides
 - **Tables**: Create formatted tables with custom styling, borders, and cell properties
+- **HTML Table Import**: Import HTML tables and convert them to PowerPoint tables with styling preservation
 - **Charts**: Generate various chart types (bar, line, pie, area, scatter, bubble, radar, doughnut)
 - **Speaker Notes**: Add presenter notes to slides
+- **Batch Operations**: Add slides with multiple content items in a single operation for efficiency
+- **Slide Master Templates**: Define and reuse slide templates for consistent presentation design
 - **Export**: Save presentations to files or export as base64/binary data
 
 ## Installation
@@ -234,6 +237,113 @@ Add speaker notes to the current slide.
 **Parameters:**
 - `presentationId`: Presentation ID
 - `notes`: Notes text
+
+### Advanced Tools
+
+#### `import_html_table`
+Import an HTML table and convert it to a PowerPoint table. Automatically preserves styling including bold, italic, colors, alignment, colspan, and rowspan.
+
+**Parameters:**
+- `presentationId`: Presentation ID
+- `html`: HTML table markup (should include `<table>` tag)
+- `x`, `y`, `w`, `h`: Position and size (inches or percentage)
+- `fontSize` (optional): Default font size for cells
+- `border` (optional): Default border configuration
+
+**Example:**
+```javascript
+await callTool("import_html_table", {
+  presentationId: "pres_1",
+  html: `<table>
+    <tr>
+      <th bgcolor="#2C3E50">Header</th>
+      <td>Data</td>
+    </tr>
+  </table>`,
+  x: 1,
+  y: 1.5,
+  w: 8,
+  h: 3
+});
+```
+
+#### `add_slide_with_content`
+Add a new slide with multiple content items (text, shapes, images, tables, charts) in a single operation. More efficient than multiple separate calls.
+
+**Parameters:**
+- `presentationId`: Presentation ID
+- `backgroundColor` (optional): Slide background color
+- `backgroundImage` (optional): Background image configuration
+- `content`: Array of content items, each with `type` ('text', 'shape', 'image', 'table', 'chart') and `data` (same parameters as individual tools)
+
+**Example:**
+```javascript
+await callTool("add_slide_with_content", {
+  presentationId: "pres_1",
+  backgroundColor: "F8F9FA",
+  content: [
+    {
+      type: "text",
+      data: { text: "Title", x: 1, y: 0.5, w: 8, h: 0.75, fontSize: 32, bold: true }
+    },
+    {
+      type: "shape",
+      data: { shape: "ellipse", x: 2, y: 2, w: 2, h: 2, fill: { color: "3498DB" } }
+    }
+  ]
+});
+```
+
+#### `define_slide_master`
+Define a reusable slide master template with predefined layouts and styling for consistent presentation design.
+
+**Parameters:**
+- `masterId`: Unique identifier for the slide master
+- `name`: Human-readable name (e.g., 'Title Slide', 'Content Slide')
+- `backgroundColor` (optional): Default background color
+- `backgroundImage` (optional): Default background image
+- `placeholders`: Array of placeholder definitions with `id`, `type`, position, and styling
+
+**Example:**
+```javascript
+await callTool("define_slide_master", {
+  masterId: "title-slide",
+  name: "Title Slide",
+  backgroundColor: "1A1A2E",
+  placeholders: [
+    {
+      id: "title",
+      type: "text",
+      x: 1, y: 2, w: 8, h: 1.5,
+      fontSize: 44, bold: true, align: "center", color: "FFFFFF"
+    }
+  ]
+});
+```
+
+#### `add_slide_from_master`
+Add a new slide based on a predefined slide master template.
+
+**Parameters:**
+- `presentationId`: Presentation ID
+- `masterId`: Slide master ID to apply
+- `placeholderContent` (optional): Object with placeholder IDs as keys and content as values
+
+**Example:**
+```javascript
+await callTool("add_slide_from_master", {
+  presentationId: "pres_1",
+  masterId: "title-slide",
+  placeholderContent: {
+    title: { text: "My Presentation Title" }
+  }
+});
+```
+
+#### `list_slide_masters`
+List all defined slide masters.
+
+**Returns:** Array of slide masters with their IDs, names, and placeholder counts.
 
 ### Export Tools
 
