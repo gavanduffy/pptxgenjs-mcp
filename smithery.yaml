@@ -4,3 +4,5 @@ env:
   NODE_ENV: "production"
   CLOUDFLARE_ACCOUNT_ID: "4f87e5f45d2de0de6a82205308cce3f3"
   PUBLIC_BUCKET_URL: "https://r2.euan.live"
+  # CLOUDFLARE_API_TOKEN: "your_api_token_here"  # Optional: For authenticated R2 uploads
+  # R2_UPLOAD_WORKER_URL: "https://your-worker.workers.dev"  # Optional: For secure Worker-based uploads

@@ -38,6 +38,102 @@ const SEARXNG_CONFIG = {
   timeout: 10000,
 };
 
+// Helper function to upload PPTX to R2
+async function uploadToR2(
+  fileName: string,
+  base64Data: string,
+  accountId?: string,
+  publicBucketUrl?: string,
+  apiToken?: string,
+  workerUrl?: string
+): Promise<{ success: boolean; url: string; error?: string }> {
+  try {
+    // Convert base64 to binary
+    const binaryString = atob(base64Data);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    
+    // Option 1: Use custom Worker URL (recommended for security)
+    if (workerUrl) {
+      const response = await fetch(workerUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+          'X-File-Name': fileName,
+        },
+        body: bytes,
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Worker upload failed: ${response.status} - ${errorText}`);
+      }
+      
+      const result = await response.json();
+      return {
+        success: true,
+        url: result.url || `${publicBucketUrl}/${fileName}`,
+      };
+    }
+    
+    // Option 2: Use Cloudflare API with authentication
+    if (apiToken && accountId && publicBucketUrl) {
+      const uploadUrl = `${publicBucketUrl}/${fileName}`;
+      
+      const response = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${apiToken}`,
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        },
+        body: bytes,
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API upload failed: ${response.status} - ${errorText}`);
+      }
+      
+      return {
+        success: true,
+        url: uploadUrl,
+      };
+    }
+    
+    // Option 3: Try direct upload (will likely fail without auth)
+    const uploadUrl = publicBucketUrl ? `${publicBucketUrl}/${fileName}` : null;
+    
+    if (!uploadUrl) {
+      throw new Error('R2 upload not configured. Please provide either R2_UPLOAD_WORKER_URL or CLOUDFLARE_API_TOKEN');
+    }
+    
+    const response = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      },
+      body: bytes,
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Upload failed: ${response.status}. Authentication required - please configure CLOUDFLARE_API_TOKEN or R2_UPLOAD_WORKER_URL`);
+    }
+    
+    return {
+      success: true,
+      url: uploadUrl,
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      url: '',
+      error: error.message,
+    };
+  }
+}
+
 async function searchImages(query: string, maxResults: number = SEARXNG_CONFIG.defaultMaxResults): Promise<Array<{ description: string; sourceUrl: string }>> {
   const url = new URL(SEARXNG_CONFIG.imageSearchPath, SEARXNG_CONFIG.baseUrl);
   url.searchParams.set('q', query);
@@ -376,6 +472,8 @@ function parseHTMLTable(html: string): any[][] {
 export const configSchema = z.object({
   CLOUDFLARE_ACCOUNT_ID: z.string().optional().describe("Cloudflare Account ID for R2 storage (optional)"),
   PUBLIC_BUCKET_URL: z.string().optional().describe("Public bucket URL for file access (optional)"),
+  CLOUDFLARE_API_TOKEN: z.string().optional().describe("Cloudflare API token for authenticated R2 uploads (optional)"),
+  R2_UPLOAD_WORKER_URL: z.string().optional().describe("Custom Cloudflare Worker URL for secure R2 uploads (optional)"),
 });
 
 // Required: Export default createServer function
@@ -1675,7 +1773,7 @@ export default function createServer({ config }: { config?: z.infer<typeof confi
             }
       
             case "save_presentation": {
-              const { presentationId, fileName, compression } = args as any;
+              const { presentationId, fileName, compression, uploadToR2: shouldUpload } = args as any;
               if (!presentationId || !fileName) {
                 throw new McpError(ErrorCode.InvalidParams, "presentationId and fileName are required");
               }
@@ -1683,22 +1781,57 @@ export default function createServer({ config }: { config?: z.infer<typeof confi
               const { pptx } = getPresentation(presentationId);
               
               try {
-                // For Smithery deployment, return base64 data instead of writing to filesystem
+                // Generate PPTX as base64
                 const base64Data = await pptx.write({ outputType: "base64", compression: compression || false });
+                
+                const result: any = {
+                  success: true,
+                  presentationId,
+                  fileName,
+                  format: "base64",
+                  data: base64Data,
+                  size: base64Data.length,
+                };
+                
+                // If uploadToR2 is requested, try to upload
+                if (shouldUpload) {
+                  // Get authentication parameters from config or environment
+                  const accountId = config?.CLOUDFLARE_ACCOUNT_ID || process.env.CLOUDFLARE_ACCOUNT_ID;
+                  const publicBucketUrl = config?.PUBLIC_BUCKET_URL || process.env.PUBLIC_BUCKET_URL;
+                  const apiToken = config?.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_API_TOKEN;
+                  const workerUrl = config?.R2_UPLOAD_WORKER_URL || process.env.R2_UPLOAD_WORKER_URL;
+                  
+                  if (!publicBucketUrl && !workerUrl) {
+                    result.uploadError = 'R2 upload not configured. Please provide PUBLIC_BUCKET_URL or R2_UPLOAD_WORKER_URL';
+                    result.message = `Presentation saved as base64. R2 upload not configured.`;
+                  } else {
+                    const uploadResult = await uploadToR2(
+                      fileName, 
+                      base64Data, 
+                      accountId, 
+                      publicBucketUrl,
+                      apiToken,
+                      workerUrl
+                    );
+                    
+                    if (uploadResult.success) {
+                      result.uploadedToR2 = true;
+                      result.r2Url = uploadResult.url;
+                      result.message = `Presentation saved and uploaded to R2: ${uploadResult.url}`;
+                    } else {
+                      result.uploadError = uploadResult.error;
+                      result.message = `Presentation saved as base64. R2 upload failed: ${uploadResult.error}`;
+                    }
+                  }
+                } else {
+                  result.message = `Presentation saved as base64 (${Math.round(base64Data.length / 1024)}KB)`;
+                }
                 
                 return {
                   content: [
                     {
                       type: "text",
-                      text: JSON.stringify({
-                        success: true,
-                        message: `Presentation exported as base64 (use this data to save as ${fileName})`,
-                        presentationId,
-                        fileName,
-                        format: "base64",
-                        data: base64Data,
-                        size: base64Data.length,
-                      }, null, 2),
+                      text: JSON.stringify(result, null, 2),
                     },
                   ],
                 };
