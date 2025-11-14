@@ -1681,21 +1681,33 @@ export default function createServer({ config }: { config?: z.infer<typeof confi
               }
               
               const { pptx } = getPresentation(presentationId);
-              await pptx.writeFile({ fileName, compression: compression || false });
               
-              return {
-                content: [
-                  {
-                    type: "text",
-                    text: JSON.stringify({
-                      success: true,
-                      message: `Presentation saved to ${fileName}`,
-                      presentationId,
-                      fileName,
-                    }, null, 2),
-                  },
-                ],
-              };
+              try {
+                // For Smithery deployment, return base64 data instead of writing to filesystem
+                const base64Data = await pptx.write({ outputType: "base64", compression: compression || false });
+                
+                return {
+                  content: [
+                    {
+                      type: "text",
+                      text: JSON.stringify({
+                        success: true,
+                        message: `Presentation exported as base64 (use this data to save as ${fileName})`,
+                        presentationId,
+                        fileName,
+                        format: "base64",
+                        data: base64Data,
+                        size: base64Data.length,
+                      }, null, 2),
+                    },
+                  ],
+                };
+              } catch (error: any) {
+                throw new McpError(
+                  ErrorCode.InternalError,
+                  `Failed to save presentation: ${error.message || error}`
+                );
+              }
             }
       
             case "export_presentation": {
@@ -1705,23 +1717,31 @@ export default function createServer({ config }: { config?: z.infer<typeof confi
               }
               
               const { pptx } = getPresentation(presentationId);
-              const output = await pptx.write({ outputType: outputType as any });
               
-              return {
-                content: [
-                  {
-                    type: "text",
-                    text: JSON.stringify({
-                      success: true,
-                      message: `Presentation exported as ${outputType}`,
-                      presentationId,
-                      outputType,
-                      data: typeof output === 'string' ? output.substring(0, 100) + '...' : '[Binary Data]',
-                      size: typeof output === 'string' ? output.length : output.byteLength || 0,
-                    }, null, 2),
-                  },
-                ],
-              };
+              try {
+                const output = await pptx.write({ outputType: outputType as any });
+                
+                return {
+                  content: [
+                    {
+                      type: "text",
+                      text: JSON.stringify({
+                        success: true,
+                        message: `Presentation exported as ${outputType}`,
+                        presentationId,
+                        outputType,
+                        data: output,
+                        size: typeof output === 'string' ? output.length : (output?.byteLength || output?.length || 0),
+                      }, null, 2),
+                    },
+                  ],
+                };
+              } catch (error: any) {
+                throw new McpError(
+                  ErrorCode.InternalError,
+                  `Failed to export presentation: ${error.message || error}`
+                );
+              }
             }
       
             case "list_presentations": {

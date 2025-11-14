@@ -2,5 +2,5 @@ runtime: "typescript"
 target: "remote"
 env:
   NODE_ENV: "production"
-  CLOUDFLARE_ACCOUNT_ID: ""
-  PUBLIC_BUCKET_URL: ""
+  CLOUDFLARE_ACCOUNT_ID: "4f87e5f45d2de0de6a82205308cce3f3"
+  PUBLIC_BUCKET_URL: "https://r2.euan.live"
