@@ -13,12 +13,21 @@ binding = "PPTX_BUCKET"
 bucket_name = "pptx"
 preview_bucket_name = "pptx-preview"
 
-# Environment variables
+# Routes for custom domain (optional)
+# routes = [
+#   { pattern = "mcp.yourdomain.com/*", custom_domain = true }
+# ]
+
+# Environment variables (non-sensitive)
+# Set sensitive values as secrets: wrangler secret put CLOUDFLARE_ACCOUNT_ID
+[vars]
+# PUBLIC_BUCKET_URL = "https://files.yourdomain.com"
+
+# Production environment
 [env.production]
 name = "pptxgenjs-mcp"
-# Set these as secrets using: wrangler secret put CLOUDFLARE_ACCOUNT_ID
-# vars = { PUBLIC_BUCKET_URL = "https://files.your-domain.com" }
 
+# Staging environment
 [env.staging]
 name = "pptxgenjs-mcp-staging"
 
@@ -29,3 +38,8 @@ command = "npm run build:worker"
 # Observability
 [observability]
 enabled = true
+
+# Smithery deployment metadata
+[site]
+# Smithery will use this metadata for deployment
+# bucket = "./public"

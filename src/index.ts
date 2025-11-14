@@ -10,6 +10,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import * as PptxGenJSModule from "pptxgenjs";
+import { addSlidesFromMarkdown } from "./markdown.js";
 
 // PptxGenJS is exported as default but TypeScript needs help with the type
 const PptxGenJS = (PptxGenJSModule as any).default || PptxGenJSModule;
@@ -86,6 +87,8 @@ async function searchImages(query: string, maxResults: number = SEARXNG_CONFIG.d
 
 // Store slide masters
 const slideMasters = new Map<string, any>();
+
+// moved Markdown utilities to ./markdown
 
 // Helper function to convert PPTX buffer to JSON template
 async function convertPptxToJson(buffer: Buffer): Promise<any> {
@@ -409,6 +412,51 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       // Presentation Management
+      {
+        name: "import_markdown_presentation",
+        description: "Create slides from Markdown input. Supports headings, paragraphs, lists (nested), images, code blocks, tables (basic), quotes, and horizontal rules.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            presentationId: { type: "string", description: "Presentation ID" },
+            markdown: { type: "string", description: "Markdown content" },
+            options: {
+              type: "object",
+              description: "Import options and defaults",
+              properties: {
+                splitLevel: { type: "number", description: "Heading level that starts a new slide (1 or 2)", enum: [1,2] },
+                titleSlide: { type: "boolean", description: "Create a title slide from the first H1", default: true },
+                defaults: {
+                  type: "object",
+                  properties: {
+                    titleFontSize: { type: "number" },
+                    bodyFontSize: { type: "number" },
+                    codeFontFace: { type: "string" },
+                    codeFontSize: { type: "number" },
+                    textColor: { type: "string" },
+                  },
+                },
+                layout: {
+                  type: "object",
+                  properties: {
+                    marginX: { type: "number" },
+                    marginY: { type: "number" },
+                    contentWidth: { type: "number" },
+                  },
+                },
+                image: {
+                  type: "object",
+                  properties: {
+                    defaultWidth: { type: "number" },
+                    defaultHeight: { type: "number" },
+                  },
+                },
+              },
+            },
+          },
+          required: ["presentationId", "markdown"],
+        },
+      },
       {
         name: "create_presentation",
         description: "Create a new PowerPoint presentation. Returns a presentation ID that should be used in subsequent operations.",
@@ -1605,6 +1653,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 success: true,
                 message: "Notes added to slide",
                 presentationId,
+              }, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "import_markdown_presentation": {
+        const { presentationId, markdown, options } = args as any;
+        if (!presentationId || !markdown) {
+          throw new McpError(ErrorCode.InvalidParams, "presentationId and markdown are required");
+        }
+
+        const { pptx } = getPresentation(presentationId);
+        addSlidesFromMarkdown(pptx, markdown, options || {});
+
+        const slides = (pptx as any).slides || [];
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: true,
+                message: "Slides created from Markdown",
+                presentationId,
+                slideCount: slides.length,
               }, null, 2),
             },
           ],

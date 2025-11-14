@@ -1,0 +1,77 @@
+name: pptxgenjs-mcp
+version: 1.0.0
+description: Create PowerPoint presentations with AI using PptxGenJS and the Model Context Protocol
+icon: 📊
+authors:
+  - name: Gavan Duffy
+    url: https://github.com/gavanduffy
+license: ISC
+homepage: https://github.com/gavanduffy/pptxgenjs-mcp
+sourceUrl: https://github.com/gavanduffy/pptxgenjs-mcp
+categories:
+  - productivity
+  - content-generation
+runtime: smithery
+transports:
+  - type: streamable-http
+environment:
+  required:
+    - name: CLOUDFLARE_ACCOUNT_ID
+      description: Your Cloudflare account ID for R2 bucket URLs
+    - name: PUBLIC_BUCKET_URL
+      description: "Optional: Custom domain for R2 bucket access (e.g., https://files.yourdomain.com)"
+      required: false
+capabilities:
+  tools:
+    - name: create_presentation
+      description: Create a new PowerPoint presentation
+    - name: add_slide
+      description: Add a slide to the presentation
+    - name: add_text
+      description: Add formatted text to slides
+    - name: add_shape
+      description: Add shapes (rectangles, circles, arrows, etc.)
+    - name: add_image
+      description: Add images from URLs or base64
+    - name: add_table
+      description: Create tables with custom styling
+    - name: add_chart
+      description: Generate charts (bar, line, pie, etc.)
+    - name: add_notes
+      description: Add speaker notes
+    - name: import_markdown_presentation
+      description: Create slides from Markdown content
+    - name: import_html_table
+      description: Convert HTML tables to PowerPoint
+    - name: save_presentation
+      description: Save to R2 and get download URL
+    - name: export_presentation
+      description: Export as base64 or binary
+    - name: list_presentations
+      description: List all active presentations
+    - name: define_layout
+      description: Define custom slide dimensions
+    - name: add_section
+      description: Organize slides with named sections
+    - name: add_slide_with_content
+      description: Add slide with multiple content items
+    - name: define_slide_master
+      description: Create reusable slide templates
+    - name: add_slide_from_master
+      description: Apply slide master templates
+    - name: list_slide_masters
+      description: List all slide masters
+    - name: search_and_add_image
+      description: Search and add images via SearXNG
+    - name: convert_pptx_to_template
+      description: Convert PPTX files to JSON templates
+    - name: save_template
+      description: Save presentation templates
+    - name: load_template
+      description: Load saved templates
+    - name: list_templates
+      description: List all saved templates
+    - name: delete_template
+      description: Delete saved templates
+    - name: create_from_template
+      description: Create presentations from templates
