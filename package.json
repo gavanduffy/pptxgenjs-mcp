@@ -4,6 +4,7 @@
   "description": "MCP server for creating PowerPoint presentations using PptxGenJS",
   "type": "module",
   "main": "dist/index.js",
+  "module": "./src/cloudflare-worker.ts",
   "bin": {
     "pptxgenjs-mcp": "./dist/index.js"
   },

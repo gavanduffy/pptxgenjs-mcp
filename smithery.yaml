@@ -1,20 +1,6 @@
 runtime: "typescript"
-startCommand:
-  type: "http"
-  configSchema:
-    type: "object"
-    properties:
-      CLOUDFLARE_ACCOUNT_ID:
-        type: "string"
-        title: "Cloudflare Account ID"
-        description: "Your Cloudflare account ID for R2 bucket URLs (required for file storage)"
-      PUBLIC_BUCKET_URL:
-        type: "string"
-        title: "Public Bucket URL"
-        description: "Optional: Custom domain for R2 bucket access (e.g., https://files.yourdomain.com)"
-    required: ["CLOUDFLARE_ACCOUNT_ID"]
-  exampleConfig:
-    CLOUDFLARE_ACCOUNT_ID: "your-cloudflare-account-id"
-    PUBLIC_BUCKET_URL: "https://files.yourdomain.com"
+target: "http"
 env:
   NODE_ENV: "production"
+  CLOUDFLARE_ACCOUNT_ID: ""
+  PUBLIC_BUCKET_URL: ""
