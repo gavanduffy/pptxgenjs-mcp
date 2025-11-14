@@ -1,5 +1,5 @@
 runtime: "typescript"
-target: "http"
+target: "remote"
 env:
   NODE_ENV: "production"
   CLOUDFLARE_ACCOUNT_ID: ""
